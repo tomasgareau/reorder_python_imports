@@ -287,6 +287,7 @@ def _module_to_base_modules(s: str) -> Generator[str, None, None]:
 
 def remove_duplicated_imports(
         partitions: Iterable[CodePartition],
+        allow_implicit_duplicates: bool,
 ) -> list[CodePartition]:
     seen: set[AbstractImportObj] = set()
     seen_module_names: set[str] = set()
@@ -300,6 +301,7 @@ def remove_duplicated_imports(
                 if (
                         isinstance(import_obj, ImportImport) and
                         not import_obj.import_statement.asname
+                        and not allow_implicit_duplicates
                 ):
                     seen_module_names.update(
                         _module_to_base_modules(
@@ -397,6 +399,7 @@ def fix_file_contents(
         imports_to_add: tuple[str, ...] = (),
         imports_to_remove: tuple[str, ...] = (),
         imports_to_replace: Iterable[ImportToReplace] = (),
+        allow_implicit_duplicates: bool = False,
         **sort_kwargs: Any,
 ) -> str:
     # internally use `'\n` as the newline and normalize at the very end
@@ -409,7 +412,10 @@ def fix_file_contents(
     partitioned = separate_comma_imports(partitioned)
     partitioned = remove_imports(partitioned, to_remove=imports_to_remove)
     partitioned = replace_imports(partitioned, to_replace=imports_to_replace)
-    partitioned = remove_duplicated_imports(partitioned)
+    partitioned = remove_duplicated_imports(
+        partitioned,
+        allow_implicit_duplicates=allow_implicit_duplicates,
+    )
     partitioned = apply_import_sorting(partitioned, **sort_kwargs)
 
     return _partitions_to_src(partitioned).replace('\n', nl)
@@ -435,6 +441,7 @@ def _fix_file(filename: str, args: argparse.Namespace) -> int:
         imports_to_add=args.add_import,
         imports_to_remove=args.remove_import,
         imports_to_replace=args.replace_import,
+        allow_implicit_duplicates=args.allow_implicit_duplicates,
         application_directories=args.application_directories.split(':'),
         unclassifiable_application_modules=args.unclassifiable,
     )
@@ -763,6 +770,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             '`--replace-import orig.mod=new.mod:attr`.  '
             'Can be specified multiple times.'
         ),
+    )
+    parser.add_argument(
+        '--allow-implicit-duplicates', action='store_true', default=False,
+        help="Don't remove a parent module import if its child is imported.",
     )
     parser.add_argument(
         '--application-directories', default='.',
